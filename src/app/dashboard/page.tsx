@@ -83,13 +83,20 @@ export default function DashboardPage() {
       const data = await res.json();
       if (data.transactions) {
         setTransactions(data.transactions);
+        // If any transaction is currently pending, auto-recheck in 3.5s to reflect payment immediately
+        const hasPending = data.transactions.some((t: Transaction) => t.status === "pending");
+        if (hasPending) {
+          setTimeout(() => {
+            fetchUserData();
+          }, 3500);
+        }
       }
     } catch {
       // Ignore
     } finally {
       setLoadingTxns(false);
     }
-  }, []);
+  }, [fetchUserData]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -577,7 +584,7 @@ export default function DashboardPage() {
                 </h2>
               </div>
               <p className="text-xs text-slate-500">
-                Purchase credits securely with Flutterwave. Credits never expire and only burn while your camera is live.
+                Purchase credits securely with Korapay. Credits never expire and only burn while your camera is live.
               </p>
             </div>
             <Link
@@ -649,13 +656,29 @@ export default function DashboardPage() {
                 Track credit top-ups, bonus awards, and stream session consumption.
               </p>
             </div>
-            <Link
-              href="/settings"
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"
-            >
-              <span>Manage Account</span>
-              <ArrowRight className="h-3 w-3" />
-            </Link>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    await fetch("/api/billing/status");
+                  } catch {}
+                  fetchTransactions();
+                  fetchUserData();
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-xs cursor-pointer"
+                title="Sync transaction statuses with Korapay"
+              >
+                <RefreshCw className="h-3 w-3 text-slate-500" />
+                <span>Sync Status</span>
+              </button>
+              <Link
+                href="/settings"
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+              >
+                <span>Manage Account</span>
+                <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
           </div>
 
           {loadingTxns ? (
@@ -686,7 +709,7 @@ export default function DashboardPage() {
                         {txn.packName}
                       </td>
                       <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
-                        {txn.flwTxRef || txn.id.slice(0, 10)}
+                        {txn.koraReference || txn.flwTxRef || txn.id.slice(0, 12)}
                       </td>
                       <td className="py-3 px-4 font-bold text-slate-900">
                         +{txn.creditsAdded.toLocaleString()} credits
@@ -719,7 +742,7 @@ export default function DashboardPage() {
         </div>
       </main>
 
-      {/* Flutterwave Top-Up Modal */}
+      {/* Korapay Top-Up Modal */}
       <TopUpModal
         isOpen={isTopUpOpen}
         initialPackId={selectedPackId}
@@ -729,6 +752,7 @@ export default function DashboardPage() {
             setCurrentUser({ ...currentUser, creditBalance: newBal });
           }
           fetchTransactions();
+          fetchUserData();
         }}
       />
     </div>
