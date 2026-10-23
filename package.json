@@ -1,5 +1,5 @@
 {
-  "name": "lumify-retailer",
+  "name": "sage-ai",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,9 +9,19 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@fal-ai/client": "^1.10.1",
+    "@mediapipe/tasks-vision": "^1.1.1",
+    "@supabase/supabase-js": "^2.118.0",
+    "@types/canvas-confetti": "^1.9.0",
+    "@xmaxai/sdk": "^1.1.15",
+    "@xmaxai/sdk-global": "^1.1.13",
+    "canvas-confetti": "^1.9.4",
+    "flutterwave-node-v3": "^1.4.1",
+    "lucide-react": "^1.61.0",
     "next": "16.4.2",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "stripe": "^23.0.0"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",

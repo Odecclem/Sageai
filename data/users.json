@@ -1,0 +1,75 @@
+[
+  {
+    "id": "usr_admin_01",
+    "name": "Platform Administrator",
+    "email": "admin@sage.ai",
+    "passwordHash": "1ed7b544922eba7fb6c1353b6ea18b22:79fe2c67ca939a1454ce769fd35a258742fd6e7f3506d05e82967e7fc4c11c03a9dd2d5225c10df7601e0c7fdf0de1bea1c2a79d629c3fc3f8142b1bf819bf48",
+    "role": "admin",
+    "creditBalance": 25878,
+    "totalSecondsStreamed": 122,
+    "createdAt": "2026-10-21T16:24:41.152Z",
+    "lastLoginAt": "2026-10-23T14:49:26.487Z"
+  },
+  {
+    "id": "usr_alex_02",
+    "name": "Alex Streamer",
+    "email": "alex@creator.tv",
+    "passwordHash": "7ff0df9d54772233dafc9addb6629001:ea99b7b4478a544a94d5a36581f6ddebb36ed7fd67587687fa259d81cf16ce786ab07a72d58eefcf1dbc193c08bd45fd6e21c3e42817f65a06307d3677203c7d",
+    "role": "user",
+    "creditBalance": 500,
+    "totalSecondsStreamed": 49,
+    "createdAt": "2026-10-21T16:24:41.153Z",
+    "lastLoginAt": "2026-10-23T14:50:09.234Z"
+  },
+  {
+    "id": "usr_1792600675061_g5znk",
+    "name": "Jordan Twitcher",
+    "email": "jordan@twitcher.tv",
+    "passwordHash": "7a92547b4535c708113453885ae8366d:0e9e375c10af5993c0bf617c9bc6dbff510111c3f01ca318c537fb3931300d1495ab6e60f91a08604db487d84541a406dc302e24976a6763736bffbbf697f5ad",
+    "role": "user",
+    "creditBalance": 600,
+    "totalSecondsStreamed": 0,
+    "createdAt": "2026-10-21T16:37:55.063Z"
+  },
+  {
+    "id": "usr_1792600871306_a3puo",
+    "name": "Jordan Twitcher",
+    "email": "jordan_1792600871@twitcher.tv",
+    "passwordHash": "41a788987bc67f8f2d5b82eb2d521daf:5b9b185ce3ab3ea551e7c126d4d9216c738b6012906fcd33a2df2de4ce5882019ea7859e40e44b600d19ab448ab22fc9bf255fb123c09a2b93e6d60b25d3fdf3",
+    "role": "user",
+    "creditBalance": 3100,
+    "totalSecondsStreamed": 0,
+    "createdAt": "2026-10-21T16:41:11.310Z"
+  },
+  {
+    "id": "usr_1792604137664_fkxi4",
+    "name": "Live Tester",
+    "email": "creator_1792604137@sage.ai",
+    "passwordHash": "29ea79a6c1d275b20a6fb46878055961:c72933e075a4fa68477df5715bf0817418b71b8f444f132e3a1b795fd274108dc17bc65ad9d1077de45585236b7db97af71cd469ec51983ca400e3731f779dda",
+    "role": "user",
+    "creditBalance": 2090,
+    "totalSecondsStreamed": 5,
+    "createdAt": "2026-10-21T17:35:37.666Z"
+  },
+  {
+    "id": "usr_1792606678889_q7w9y",
+    "name": "Zero Tester",
+    "email": "test_zero_1792606678@sage.ai",
+    "passwordHash": "42686d625c9e87afde15839b6a58c1c8:a7aee07d09d9926d4f836485fac6d442801200166e554336b21cf821a5c33b4ad1afff53b7e40b2815942b7f7f8753748aa7f4fd6e6dd66183de6fbacd936047",
+    "role": "user",
+    "creditBalance": 0,
+    "totalSecondsStreamed": 0,
+    "createdAt": "2026-10-21T18:17:58.895Z"
+  },
+  {
+    "id": "usr_1792767118115_tekzc",
+    "name": "cook man",
+    "email": "cookman@gmail.com",
+    "passwordHash": "559a56eaa4ab262d2130c4f5b97afffd:8b6eb3295f1f84989ee609393145b19ed4b31532fe0e1e772eac1c438e42ace89c6079071cb252ff32ad19653e24fb4685d36e15965e0232f4ba7405407ce689",
+    "role": "user",
+    "creditBalance": 500,
+    "totalSecondsStreamed": 0,
+    "createdAt": "2026-10-23T14:51:58.118Z",
+    "lastLoginAt": "2026-10-23T15:09:51.637Z"
+  }
+]
