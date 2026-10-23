@@ -60,6 +60,7 @@ class XmaxSessionManager {
   private remoteContainer: HTMLDivElement | null = null;
   private remoteVideo: HTMLVideoElement | null = null;
   private isConnecting = false;
+  private isCancelled = false;
   private currentApiKey: string | null = null;
 
   constructor() {
@@ -103,7 +104,7 @@ class XmaxSessionManager {
   }
 
   public isLiveSessionActive(): boolean {
-    return Boolean(this.session && this.session.state === "running");
+    return Boolean(!this.isCancelled && this.session && this.session.state === "running");
   }
 
   public hasLiveFrames(): boolean {
@@ -113,7 +114,8 @@ class XmaxSessionManager {
       el &&
       el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
       !el.paused &&
-      !el.ended
+      !el.ended &&
+      (el.currentTime > 0 || (el.videoWidth > 0 && el.videoHeight > 0))
     );
   }
 
@@ -121,7 +123,7 @@ class XmaxSessionManager {
    * Uploads reference image to XMax Cloud Storage according to /docs/resources/file-upload
    */
   private async uploadReferenceImage(inputUrl: string): Promise<string | null> {
-    if (!this.client) return null;
+    if (!this.client || this.isCancelled) return null;
     try {
       if (inputUrl.startsWith("http://") || inputUrl.startsWith("https://")) {
         return inputUrl;
@@ -140,7 +142,7 @@ class XmaxSessionManager {
         }
       }
 
-      if (fileToUpload) {
+      if (fileToUpload && !this.isCancelled) {
         console.log("Sage AI: Uploading reference image to XMax Cloud Storage...", fileToUpload.name);
         const uploadResult = await this.client.files.uploadImage(fileToUpload);
         console.log("Sage AI: Reference image uploaded successfully to XMax CDN:", uploadResult.url);
@@ -160,15 +162,22 @@ class XmaxSessionManager {
     // Clean up existing session if active
     await this.disconnect();
 
+    this.isCancelled = false;
     this.isConnecting = true;
     this.currentApiKey = options.apiKey;
 
     try {
       const { createXmaxClient, models } = await import("@xmaxai/sdk-global");
 
+      if (this.isCancelled) {
+        this.isConnecting = false;
+        return null as unknown as RealtimeSession;
+      }
+
       this.client = createXmaxClient({
         apiKey: options.apiKey,
         onError: (msg) => {
+          if (this.isCancelled) return;
           console.error("Sage AI: XMax global error:", msg);
           options.onError?.(msg);
         },
@@ -181,9 +190,18 @@ class XmaxSessionManager {
       let resolvedRefImage: string | undefined = undefined;
       if (options.refImageUrl) {
         const uploaded = await this.uploadReferenceImage(options.refImageUrl);
+        if (this.isCancelled) {
+          this.isConnecting = false;
+          return null as unknown as RealtimeSession;
+        }
         if (uploaded) {
           resolvedRefImage = uploaded;
         }
+      }
+
+      if (this.isCancelled) {
+        this.isConnecting = false;
+        return null as unknown as RealtimeSession;
       }
 
       // Format prompt: default strictly to '视频中角色替换成参考图中角色' when using ref image realtime swapping
@@ -226,6 +244,7 @@ class XmaxSessionManager {
 
         // Called when the remote stream becomes available or is rebound
         onRemoteStream: (remoteStream) => {
+          if (this.isCancelled) return;
           console.log("Sage AI: XMax remote WebRTC stream ready!", remoteStream);
           if (this.remoteVideo) {
             this.remoteVideo.srcObject = remoteStream;
@@ -236,6 +255,7 @@ class XmaxSessionManager {
 
         // Called when the first video frame arrives
         onRemoteVideoFirstFrame: (info) => {
+          if (this.isCancelled) return;
           console.log("Sage AI: XMax remote first frame arrived:", info);
           options.onFirstFrame?.();
           options.onStateChange?.("streaming");
@@ -243,6 +263,7 @@ class XmaxSessionManager {
 
         // Called when the session state changes
         onStateChange: (state) => {
+          if (this.isCancelled) return;
           console.log("Sage AI: XMax session state changed:", state);
           options.onStateChange?.(state);
         },
@@ -256,6 +277,7 @@ class XmaxSessionManager {
 
         // Called when a connection or session operation fails
         onError: (message, error) => {
+          if (this.isCancelled) return;
           console.error("Sage AI: XMax session error:", message, error);
           const errText = typeof message === "string" ? message : error?.message || "XMax RTC error";
           options.onError?.(errText);
@@ -263,14 +285,27 @@ class XmaxSessionManager {
 
         // Called after an established session disconnects
         onDisconnect: (reason) => {
+          if (this.isCancelled) return;
           console.log("Sage AI: XMax session disconnected:", reason);
           options.onStateChange?.("disconnected");
         },
       });
 
+      if (this.isCancelled) {
+        console.log("Sage AI: User stopped while XMax connect was resolving. Closing session immediately.");
+        try {
+          await session.disconnect();
+        } catch {}
+        await this.disconnect();
+        return session;
+      }
+
       this.session = session;
       return session;
     } catch (err: unknown) {
+      if (this.isCancelled) {
+        return null as unknown as RealtimeSession;
+      }
       const errorMsg = err instanceof Error ? err.message : "Failed to establish XMax session";
       console.error("Sage AI: XMax connection failure:", errorMsg);
       options.onError?.(errorMsg);
@@ -284,7 +319,7 @@ class XmaxSessionManager {
    * Update the prompt and reference image without reconnecting the camera
    */
   public async updateContext(prompt: string, refImageUrl?: string | null): Promise<void> {
-    if (!this.session || !this.client) return;
+    if (!this.session || !this.client || this.isCancelled) return;
     try {
       let resolvedRefImage: string | null | undefined = refImageUrl;
       if (refImageUrl) {
@@ -309,9 +344,12 @@ class XmaxSessionManager {
   }
 
   /**
-   * Disconnect the realtime session and release resources
+   * Disconnect the realtime session and release all audio/video resources completely
    */
   public async disconnect(): Promise<void> {
+    this.isCancelled = true;
+    this.isConnecting = false;
+
     if (this.session) {
       try {
         await this.session.disconnect();
@@ -323,10 +361,23 @@ class XmaxSessionManager {
     }
 
     if (this.remoteVideo) {
+      if (this.remoteVideo.srcObject instanceof MediaStream) {
+        this.remoteVideo.srcObject.getTracks().forEach((t) => t.stop());
+      }
       this.remoteVideo.srcObject = null;
+      this.remoteVideo.pause();
     }
 
     if (this.remoteContainer) {
+      const mediaElements = this.remoteContainer.querySelectorAll("video, audio");
+      mediaElements.forEach((el) => {
+        const m = el as HTMLMediaElement;
+        if (m.srcObject instanceof MediaStream) {
+          m.srcObject.getTracks().forEach((t) => t.stop());
+        }
+        m.srcObject = null;
+        m.pause();
+      });
       this.remoteContainer.innerHTML = "";
     }
   }

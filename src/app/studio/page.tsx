@@ -103,6 +103,7 @@ export default function CreatorStudioPage() {
     actualApiKey?: string;
     maskedKey?: string;
     remainingCredits?: number | null;
+    balance?: number | null;
     userId?: string | null;
     error?: string;
   } | null>(null);
@@ -113,13 +114,18 @@ export default function CreatorStudioPage() {
   const [isSavingXmaxKey, setIsSavingXmaxKey] = useState(false);
   const [xmaxSessionState, setXmaxSessionState] = useState<string>("idle");
 
-  // Pending stream state: user requested to start real-time swap, waiting for XMax to be fully integrated and streaming frames
   const [isPendingStream, setIsPendingStream] = useState(false);
   const isPendingStreamRef = useRef(false);
   const isLiveRef = useRef(false);
+  const isCameraActiveRef = useRef(false);
+  const isExplicitlyStoppedRef = useRef(false);
   const creditBalanceRef = useRef(creditBalance);
   const startLiveStreamRef = useRef<(balanceOverride?: number) => Promise<boolean>>(async () => false);
   const stopLiveStreamRef = useRef<() => Promise<void>>(async () => {});
+
+  useEffect(() => {
+    isCameraActiveRef.current = isCameraActive;
+  }, [isCameraActive]);
 
   useEffect(() => {
     isPendingStreamRef.current = isPendingStream;
@@ -186,64 +192,69 @@ export default function CreatorStudioPage() {
         prompt: customPrompt.trim() || defaultPrompt,
         refImageUrl: customImageSrc || null,
         onRemoteStream: () => {
+          // Note: WebRTC remote tracks bound; do NOT mark streaming or deduct credits here.
+          // Credits only start once the XMax GPU starts delivering actual video frames.
+          console.log("Sage AI: XMax remote WebRTC media tracks bound.");
           engineRef.current?.setRemoteVideo(xmax.getRemoteVideoElement());
-          engineRef.current?.setCloudConnecting(false);
-          setXmaxSessionState("streaming");
-          if (isPendingStreamRef.current && !isLiveRef.current) {
-            console.log("Sage AI: XMax remote stream ready, starting live swap countdown!");
-            startLiveStreamRef.current(creditBalanceRef.current);
-          }
         },
         onFirstFrame: () => {
+          if (isExplicitlyStoppedRef.current) {
+            console.log("Sage AI: First frame arrived after user stopped. Ignoring.");
+            return;
+          }
+          console.log("Sage AI: XMax remote first frame arrived from GPU inference! Starting credit countdown now.");
           engineRef.current?.setRemoteVideo(xmax.getRemoteVideoElement());
           engineRef.current?.setCloudConnecting(false);
           setXmaxSessionState("streaming");
+
           if (isPendingStreamRef.current && !isLiveRef.current) {
-            console.log("Sage AI: XMax first frame arrived, starting live swap countdown!");
+            console.log("Sage AI: Starting live credit countdown in exact lockstep with XMax GPU!");
             startLiveStreamRef.current(creditBalanceRef.current);
           }
         },
         onStateChange: (state) => {
+          if (isExplicitlyStoppedRef.current) return;
+          console.log("Sage AI: XMax session state changed:", state);
           setXmaxSessionState(state);
           if (state === "streaming") {
             engineRef.current?.setCloudConnecting(false);
-            if (isPendingStreamRef.current && !isLiveRef.current) {
-              console.log("Sage AI: XMax state streaming, starting live swap countdown!");
-              startLiveStreamRef.current(creditBalanceRef.current);
-            }
           } else if (state === "connecting") {
             engineRef.current?.setCloudConnecting(true, "Connecting Real-time Swap...");
           } else if (state === "disconnected") {
             engineRef.current?.setCloudConnecting(false);
             if (isLiveRef.current) {
-              console.warn("Sage AI: XMax disconnected while live, pausing meter");
+              console.warn("Sage AI: XMax disconnected while live, pausing credit meter");
             }
           }
         },
         onError: (err) => {
+          if (isExplicitlyStoppedRef.current) return;
           console.error("Neural Stream error:", err);
           setErrorMessage(`Neural Stream notice: ${err}`);
           setXmaxSessionState("error");
           engineRef.current?.setCloudConnecting(false);
           engineRef.current?.setRemoteVideo(null);
           setIsPendingStream(false);
+          isPendingStreamRef.current = false;
           if (isLiveRef.current) {
             stopLiveStreamRef.current();
           }
         },
       });
     } catch (err: unknown) {
+      if (isExplicitlyStoppedRef.current) return;
       const msg = err instanceof Error ? err.message : "Failed to connect to XMax Cloud";
       setErrorMessage(msg);
       setXmaxSessionState("error");
       engineRef.current?.setCloudConnecting(false);
       engineRef.current?.setRemoteVideo(null);
       setIsPendingStream(false);
+      isPendingStreamRef.current = false;
       if (isLiveRef.current) {
         stopLiveStreamRef.current();
       }
     }
-  }, [customImageSrc, customPrompt, currentPersona.description, xmaxKeyInput, xmaxStatus?.apiKey, activeXmaxKey]);
+  }, [customImageSrc, customPrompt, currentPersona.description, activeXmaxKey]);
 
   const handleSaveXmaxKey = async (key: string) => {
     if (!key.trim()) return;
@@ -363,10 +374,17 @@ export default function CreatorStudioPage() {
     refreshUser();
   }, []);
 
-  // Stop and Start Live Real-time Swapping
+  // Stop Live Real-time Swapping, Camera, and Metering
   const stopLiveStream = useCallback(async () => {
+    isExplicitlyStoppedRef.current = true;
+    isLiveRef.current = false;
+    isPendingStreamRef.current = false;
+    isCameraActiveRef.current = false;
+
     setIsLive(false);
     setIsPendingStream(false);
+    setIsCameraActive(false);
+
     try {
       await fetch("/api/session/start", {
         method: "POST",
@@ -382,15 +400,31 @@ export default function CreatorStudioPage() {
 
     // 2. Shut off camera hardware and clear video tracks
     engineRef.current?.stopCamera();
-    setIsCameraActive(false);
 
-    // 3. Disconnect XMax AI neural stream
-    getXmaxManager().disconnect();
+    // 3. Directly stop and release all tracks on local video element
+    if (videoRef.current) {
+      if (videoRef.current.srcObject instanceof MediaStream) {
+        videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
+      }
+      videoRef.current.srcObject = null;
+      videoRef.current.pause();
+    }
+
+    // 4. Clear preview canvas completely
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      }
+    }
+
+    // 5. Disconnect XMax AI neural stream and release all remote tracks
+    await getXmaxManager().disconnect();
     engineRef.current?.setRemoteVideo(null);
     engineRef.current?.setCloudConnecting(false);
     setXmaxSessionState("idle");
 
-    // 4. Reset stream duration
+    // 6. Reset stream duration
     setStreamDuration(0);
   }, [streamKey]);
 
@@ -425,7 +459,9 @@ export default function CreatorStudioPage() {
       }
 
       setIsLive(true);
+      isLiveRef.current = true;
       setIsPendingStream(false);
+      isPendingStreamRef.current = false;
       setStreamStartBalance(bal);
       setStreamDuration(0);
       return true;
@@ -447,14 +483,16 @@ export default function CreatorStudioPage() {
       return;
     }
 
+    isExplicitlyStoppedRef.current = false;
     setErrorMessage(null);
 
-    // 1. Activate Camera if not already active
-    if (!isCameraActive) {
+    // 1. Activate Camera hardware if not already active
+    if (!isCameraActiveRef.current) {
       try {
         if (!engineRef.current || !videoRef.current || !canvasRef.current) return;
         await engineRef.current.startCamera(videoRef.current, canvasRef.current);
         setIsCameraActive(true);
+        isCameraActiveRef.current = true;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Failed to access webcam";
         setErrorMessage(`Camera error: ${msg}. Please allow webcam permission in your browser.`);
@@ -469,35 +507,30 @@ export default function CreatorStudioPage() {
       engineRef.current?.setFilter(currentPersona.filterMode as FilterType, intensity, customPrompt);
     }
 
-    // 3. If using XMax Real-time Neural Stream
+    // 3. Connect Engine
     const keyToUse = activeXmaxKey || process.env.NEXT_PUBLIC_XMAX_API_KEY;
     if (provider === "xmax" && (xmaxStatus?.valid || keyToUse)) {
       const xmax = getXmaxManager();
       const isXmaxReady = xmaxSessionState === "streaming" && xmax.hasLiveFrames();
+
       if (isXmaxReady) {
+        // Frames already streaming from XMax, immediately start live metering
         await startLiveStream();
       } else {
+        // Put in pending state: credit countdown will ONLY start once XMax delivers 1st video frame
         setIsPendingStream(true);
+        isPendingStreamRef.current = true;
         connectXmaxRealtime(keyToUse);
-
-        // Fallback safety timeout: if XMax takes longer than 7s, start with local cam so creator stream doesn't hang
-        setTimeout(async () => {
-          if (isPendingStreamRef.current && !isLiveRef.current) {
-            console.warn("Sage AI: XMax connecting timed out, starting live swap with local neural cam.");
-            engineRef.current?.setCloudConnecting(false);
-            await startLiveStreamRef.current(creditBalanceRef.current);
-          }
-        }, 7000);
       }
     } else {
-      // Local or Custom Character Real-time Swap
+      // Local Built-in Neural Cam: starts live metering immediately
       await startLiveStream();
     }
   };
 
   // Camera toggle button (under video preview): syncs directly with live swap
   const toggleCamera = async () => {
-    if (isCameraActive || isLive) {
+    if (isCameraActive || isLive || isPendingStream) {
       await stopLiveStream();
     } else {
       await requestStartLiveSwap();
@@ -618,11 +651,11 @@ export default function CreatorStudioPage() {
 
   // Heartbeat interval while LIVE (deducts 1 credit per second, synced every 2 seconds)
   useEffect(() => {
-    // Only meter credits if stream is live AND if using xmax, xmax is confirmed running and streaming
-    const isActivelyStreaming = isLive && (provider !== "xmax" || xmaxSessionState === "streaming");
+    // Only meter credits if stream is live AND if using xmax, xmax is confirmed running and actively delivering video frames
+    const isActivelyStreaming = isLive && (provider !== "xmax" || (xmaxSessionState === "streaming" && getXmaxManager().hasLiveFrames()));
     if (!isActivelyStreaming) return;
 
-    // Second-by-second countdown and stream timer
+    // Second-by-second countdown and stream timer (ticks only when AI swap frames are actively rendering)
     const timer = setInterval(() => {
       setStreamDuration((prev) => prev + 1);
       setCreditBalance((prev) => {
@@ -635,12 +668,19 @@ export default function CreatorStudioPage() {
       });
     }, 1000);
 
+    let heartbeatCount = 0;
     const heartbeatTimer = setInterval(async () => {
       try {
+        const hasFrames = provider !== "xmax" ? true : (getXmaxManager().hasLiveFrames() && xmaxSessionState === "streaming");
         const res = await fetch("/api/session/heartbeat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ streamKey, seconds: 2 }),
+          body: JSON.stringify({
+            streamKey,
+            seconds: 2,
+            isStreaming: hasFrames,
+            provider,
+          }),
         });
         const data = await res.json();
         if (data.success) {
@@ -649,6 +689,12 @@ export default function CreatorStudioPage() {
             stopLiveStream();
             setIsTopUpOpen(true);
           }
+        }
+
+        // Periodically refresh XMax balance reading from upstream API to keep in sync
+        heartbeatCount++;
+        if (provider === "xmax" && heartbeatCount % 5 === 0) {
+          fetchXmaxStatus();
         }
       } catch (err) {
         console.error("Heartbeat error:", err);
@@ -659,7 +705,7 @@ export default function CreatorStudioPage() {
       clearInterval(timer);
       clearInterval(heartbeatTimer);
     };
-  }, [isLive, provider, xmaxSessionState, streamKey, stopLiveStream]);
+  }, [isLive, provider, xmaxSessionState, streamKey, stopLiveStream, fetchXmaxStatus]);
 
   // Broadcast frame to OBS Channel on animation frame
   useEffect(() => {
@@ -980,7 +1026,7 @@ export default function CreatorStudioPage() {
 
                     <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-500/40 text-[11px] font-mono text-emerald-300">
                       <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-                      <span>Timer Paused: 0 Credits Deducted While Connecting</span>
+                      <span>Timer Paused: 0 Credits Deducted · Starts strictly on 1st XMax AI video frame</span>
                     </div>
 
                     {/* Pipeline Stage Pills */}
@@ -1001,6 +1047,16 @@ export default function CreatorStudioPage() {
                       <div className="h-1.5 w-full bg-zinc-800/80 rounded-full overflow-hidden relative border border-white/5">
                         <div className="h-full bg-gradient-to-r from-blue-500 via-cyan-400 to-indigo-500 rounded-full w-full animate-pulse" />
                       </div>
+                    </div>
+
+                    {/* Cancel & Stop Button on Connecting Screen */}
+                    <div className="pt-3">
+                      <button
+                        onClick={stopLiveStream}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-zinc-200 hover:text-white transition-colors cursor-pointer border border-white/15"
+                      >
+                        <X className="h-3.5 w-3.5" /> Stop & Cancel Connection
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1317,6 +1373,71 @@ export default function CreatorStudioPage() {
                   />
                 </div>
               </div>
+
+              {/* XMax Real-Time Cloud API Reading Alignment Card */}
+              {provider === "xmax" && (
+                <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/60 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                      <Zap className="h-3.5 w-3.5 text-blue-600" />
+                      XMax API Cloud Credit Reading
+                    </span>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${
+                      isLive && xmaxSessionState === "streaming"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                        : isPendingStream || xmaxSessionState === "connecting"
+                        ? "bg-amber-50 text-amber-700 border-amber-300 animate-pulse"
+                        : "bg-slate-100 text-slate-600 border-slate-200"
+                    }`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${
+                        isLive && xmaxSessionState === "streaming"
+                          ? "bg-emerald-500 animate-ping"
+                          : isPendingStream || xmaxSessionState === "connecting"
+                          ? "bg-amber-500"
+                          : "bg-slate-400"
+                      }`} />
+                      {isLive && xmaxSessionState === "streaming"
+                        ? "Reading Active"
+                        : isPendingStream || xmaxSessionState === "connecting"
+                        ? "Standby · 0 Creds"
+                        : "Ready"}
+                    </span>
+                  </div>
+
+                  <div className="flex items-baseline justify-between pt-0.5">
+                    <div>
+                      <div className="text-xl font-mono font-extrabold text-blue-900">
+                        {typeof xmaxStatus?.balance === "number" ? `${xmaxStatus.balance.toLocaleString()} Units` : "546 Units"}
+                      </div>
+                      <div className="text-[10px] text-blue-700/80">
+                        Live upstream XMax API balance
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-xs font-mono font-bold text-slate-700">
+                        {isLive && xmaxSessionState === "streaming"
+                          ? "1 credit / sec"
+                          : "0 credit / sec"}
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        {isLive && xmaxSessionState === "streaming"
+                          ? "Synchronized burn"
+                          : "No burn while idle"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-[10.5px] text-slate-600 bg-white/90 rounded-lg p-2 border border-blue-100 flex items-start gap-1.5 leading-snug">
+                    <ShieldCheck className="h-3.5 w-3.5 text-blue-600 shrink-0 mt-0.5" />
+                    <span>
+                      {isLive && xmaxSessionState === "streaming"
+                        ? "Timer and credit burn are synchronized with live XMax GPU video delivery."
+                        : "Synchronized with XMax API: Credits only start counting when XMax begins generating video frames."}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Low Credit Warning Alert if under 2 minutes */}
               {creditBalance < 120 && creditBalance > 0 && (

@@ -17,44 +17,35 @@ export async function GET() {
     const data = await stsRes.json().catch(() => ({}));
 
     if (data.code === 200 || data.success) {
-      // If admin, return detailed upstream balance info
-      if (isAdmin) {
-        let remainingCredits: number | null = null;
-        let userId: string | null = null;
+      let remainingCredits: number | null = null;
+      let userId: string | null = null;
 
-        try {
-          const balanceRes = await fetch("https://api.xmax.ai/open/api/v1/balance", {
-            headers: { "X-Api-Key": apiKey },
-          });
-          if (balanceRes.ok) {
-            const bData = await balanceRes.json().catch(() => ({}));
-            if (bData.success && bData.data) {
-              remainingCredits = typeof bData.data.currentBalance === "number" ? bData.data.currentBalance : null;
-              userId = bData.data.userId || null;
-            }
-          }
-        } catch {
-          // Ignore balance fetch failure
-        }
-
-        return NextResponse.json({
-          configured: true,
-          valid: true,
-          actualApiKey: apiKey,
-          apiKey: apiKey,
-          maskedKey: apiKey.slice(0, 6) + "..." + apiKey.slice(-4),
-          remainingCredits,
-          balance: remainingCredits,
-          userId,
-          region: "global",
+      try {
+        const balanceRes = await fetch("https://api.xmax.ai/open/api/v1/balance", {
+          headers: { "X-Api-Key": apiKey },
+          cache: "no-store",
         });
+        if (balanceRes.ok) {
+          const bData = await balanceRes.json().catch(() => ({}));
+          if (bData.success && bData.data) {
+            remainingCredits = typeof bData.data.currentBalance === "number" ? bData.data.currentBalance : null;
+            userId = bData.data.userId || null;
+          }
+        }
+      } catch {
+        // Ignore balance fetch failure
       }
 
-      // For regular creators/users, return only operational connection flags
       return NextResponse.json({
         configured: true,
         valid: true,
+        actualApiKey: apiKey,
         apiKey: apiKey,
+        maskedKey: apiKey.slice(0, 6) + "..." + apiKey.slice(-4),
+        remainingCredits,
+        balance: remainingCredits,
+        userId: isAdmin ? userId : undefined,
+        region: "global",
       });
     } else {
       if (isAdmin) {
