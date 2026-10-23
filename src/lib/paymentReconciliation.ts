@@ -50,6 +50,9 @@ export async function reconcileTransaction(
       } else if (koraData && koraData.status === "failed") {
         transactionStore.updateStatus(txn.id, "failed");
         return { reconciled: true, status: "failed", creditsAdded: 0 };
+      } else if (!koraRes.status && koraRes.message?.toLowerCase().includes("not found")) {
+        transactionStore.updateStatus(txn.id, "failed");
+        return { reconciled: true, status: "failed", creditsAdded: 0 };
       }
     } catch (err) {
       console.error(`[Reconciliation] Error verifying ref ${txn.koraReference}:`, err);

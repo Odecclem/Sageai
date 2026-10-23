@@ -122,7 +122,17 @@ export async function verifyTransaction(reference: string): Promise<KoraVerifyRe
     },
   });
 
-  const data: KoraVerifyResponse = await res.json();
+  const rawText = await res.text().catch(() => "");
+  let data: KoraVerifyResponse;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    return {
+      status: false,
+      message: `Invalid response from Korapay (${res.status})`,
+      data: null as any,
+    };
+  }
   return data;
 }
 
