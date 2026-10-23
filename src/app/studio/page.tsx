@@ -236,30 +236,45 @@ export default function CreatorStudioPage() {
         },
         onError: (err) => {
           if (isExplicitlyStoppedRef.current) return;
-          console.error("Neural Stream error:", err);
-          setErrorMessage(`Neural Stream notice: ${err}`);
-          setXmaxSessionState("error");
-          engineRef.current?.setCloudConnecting(false);
+          console.warn("Neural Stream error note:", err);
+
+          // 1. Immediately fall back to built-in local engine so video feed NEVER freezes, drops, or dies
           engineRef.current?.setRemoteVideo(null);
-          setIsPendingStream(false);
-          isPendingStreamRef.current = false;
-          if (isLiveRef.current) {
-            stopLiveStreamRef.current();
+          engineRef.current?.setCloudConnecting(false);
+
+          const errStr = typeof err === "string" ? err : String(err || "");
+          const isInterrupted =
+            errStr.includes("interrupted") ||
+            errStr.includes("stalled") ||
+            errStr.includes("overloaded") ||
+            errStr.includes("Network connection failed");
+
+          // 2. If it is an intermittent WebRTC interruption, keep local swap active and attempt auto-reconnect in background
+          if (isInterrupted && isCameraActiveRef.current && !isExplicitlyStoppedRef.current) {
+            console.log("Sage AI: Intermittent WebRTC notice detected. Live swap smoothly maintained by local engine. Auto-reconnecting in background...");
+            setXmaxSessionState("connecting");
+            setTimeout(() => {
+              if (isCameraActiveRef.current && !isExplicitlyStoppedRef.current) {
+                connectXmaxRealtime();
+              }
+            }, 1800);
+          } else {
+            setErrorMessage(`Neural Stream notice: ${errStr}`);
+            setXmaxSessionState("error");
+            setIsPendingStream(false);
+            isPendingStreamRef.current = false;
           }
         },
       });
     } catch (err: unknown) {
       if (isExplicitlyStoppedRef.current) return;
       const msg = err instanceof Error ? err.message : "Failed to connect to Neural Cloud Engine";
-      setErrorMessage(msg);
-      setXmaxSessionState("error");
-      engineRef.current?.setCloudConnecting(false);
+      console.warn("Neural Stream connect note:", msg);
       engineRef.current?.setRemoteVideo(null);
+      engineRef.current?.setCloudConnecting(false);
+      setXmaxSessionState("error");
       setIsPendingStream(false);
       isPendingStreamRef.current = false;
-      if (isLiveRef.current) {
-        stopLiveStreamRef.current();
-      }
     }
   }, [customImageSrc, customPrompt, currentPersona.description, activeXmaxKey]);
 
@@ -1246,18 +1261,36 @@ export default function CreatorStudioPage() {
 
               {/* Instructions Callout (Collapsible) */}
               {showObsInstructions && (
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-2 animate-in fade-in duration-200">
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-2.5 animate-in fade-in duration-200">
                   <div className="font-semibold text-slate-900 flex items-center gap-1.5">
                     <Sparkles className="h-4 w-4 text-blue-600" />
-                    How to stream fake Android calls to WhatsApp or Telegram:
+                    How to stream clean Android calls to WhatsApp or Telegram:
                   </div>
-                  <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600 pl-1">
-                    <li>Select <strong>WhatsApp Call</strong> or <strong>Telegram Call</strong> view below and set your Caller Name (e.g. Mom).</li>
-                    <li>Click <strong>Copy OBS URL</strong> or <strong>Pop Out Window</strong>.</li>
-                    <li>In <strong>OBS Studio</strong>, click <code>+</code> under Sources &rarr; select <strong>Browser</strong> &rarr; paste the URL (Set Width: <code>720</code>, Height: <code>1280</code>).</li>
-                    <li>In OBS Studio, click <strong>&quot;Start Virtual Camera&quot;</strong>.</li>
-                    <li>Open <strong>WhatsApp Desktop</strong> or <strong>Telegram Desktop</strong> &rarr; start video call &rarr; switch camera device to <strong>&quot;OBS Virtual Camera&quot;</strong>!</li>
-                  </ol>
+
+                  <div className="space-y-2 text-[11px] text-slate-600">
+                    <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900">
+                      <strong>Option 1 (Best & 100% Clean): OBS Browser Source</strong>
+                      <p className="mt-0.5 text-emerald-800">
+                        In OBS Studio, click <code>+</code> under Sources &rarr; select <strong>Browser</strong> &rarr; paste the copied URL. Set Width: <code>720</code>, Height: <code>1280</code>. This directly renders the video inside OBS with <strong>zero window borders, zero browser URL bar, and 100% clean output!</strong>
+                      </p>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-900">
+                      <strong>Option 2: Pop Out Window + Window Capture</strong>
+                      <p className="mt-0.5 text-blue-800">
+                        Click <strong>Pop Out Window</strong> &rarr; double-click anywhere inside the window or press <strong>F</strong> to enter <strong>Borderless Fullscreen</strong> (instantly hides browser address bar and tabs). In OBS, capture the window with Window Capture.
+                      </p>
+                    </div>
+
+                    <div className="pt-1">
+                      <strong>Connecting to WhatsApp / Telegram Calls:</strong>
+                      <ol className="list-decimal list-inside space-y-0.5 pl-1 mt-1">
+                        <li>In OBS Studio, click <strong>&quot;Start Virtual Camera&quot;</strong> (bottom-right controls).</li>
+                        <li>Open <strong>WhatsApp Desktop</strong> or <strong>Telegram Desktop</strong> &rarr; Settings &rarr; Video &rarr; select <strong>&quot;OBS Virtual Camera&quot;</strong>.</li>
+                        <li>Call someone: your simulated Android call screen will display live to them!</li>
+                      </ol>
+                    </div>
+                  </div>
                 </div>
               )}
 

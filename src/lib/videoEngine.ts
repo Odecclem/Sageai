@@ -833,15 +833,7 @@ export class VideoTransformationEngine {
 
     ctx.restore(); // Restore 3D sway translation
 
-    // 6. PRANK CALL STUDIO HUD / STATUS
-    ctx.save();
-    ctx.font = "bold 11px monospace";
-    ctx.fillStyle = this.faceLandmarker ? "#34d399" : "#a855f7";
-    const statusText = this.faceLandmarker
-      ? "LIVE MESH | 60 FPS | ACTIVE"
-      : "SAGE LIVE | HD CAM | 60 FPS";
-    ctx.fillText(statusText, 24, height - 24);
-    ctx.restore();
+    // Canvas output is 100% clean video for OBS and virtual camera broadcast
   }
 
   /**

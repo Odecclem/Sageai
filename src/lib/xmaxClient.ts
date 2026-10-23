@@ -66,16 +66,38 @@ class XmaxSessionManager {
   constructor() {
     if (typeof window !== "undefined") {
       // 1. Remote container for SDK-managed WebRTC rendering
+      // MUST have real dimensions so Chromium's GPU compositor decodes frames and requestVideoFrameCallback never stalls
       this.remoteContainer = document.createElement("div");
-      this.remoteContainer.id = "xmax-remote-container";
+      this.remoteContainer.id = "sage-cloud-remote-container";
       this.remoteContainer.style.position = "fixed";
-      this.remoteContainer.style.opacity = "0";
+      this.remoteContainer.style.top = "0";
+      this.remoteContainer.style.left = "0";
+      this.remoteContainer.style.width = "480px";
+      this.remoteContainer.style.height = "270px";
+      this.remoteContainer.style.zIndex = "-9999";
       this.remoteContainer.style.pointerEvents = "none";
-      this.remoteContainer.style.width = "1px";
-      this.remoteContainer.style.height = "1px";
-      this.remoteContainer.style.bottom = "0";
-      this.remoteContainer.style.right = "0";
+      this.remoteContainer.style.opacity = "0.01";
+      this.remoteContainer.style.transform = "scale(0.01)";
+      this.remoteContainer.style.transformOrigin = "top left";
+      this.remoteContainer.style.visibility = "visible";
       document.body.appendChild(this.remoteContainer);
+
+      // Keep watch for SDK mounting of video element to ensure autoplay & playsInline
+      const observer = new MutationObserver(() => {
+        const v = this.remoteContainer?.querySelector("video");
+        if (v) {
+          v.playsInline = true;
+          v.autoplay = true;
+          v.muted = true;
+          v.style.width = "100%";
+          v.style.height = "100%";
+          v.style.objectFit = "cover";
+          if (v.paused) {
+            v.play().catch(() => {});
+          }
+        }
+      });
+      observer.observe(this.remoteContainer, { childList: true, subtree: true });
 
       // 2. Direct video element for custom canvas rendering
       this.remoteVideo = document.createElement("video");
@@ -83,12 +105,16 @@ class XmaxSessionManager {
       this.remoteVideo.playsInline = true;
       this.remoteVideo.muted = true;
       this.remoteVideo.style.position = "fixed";
-      this.remoteVideo.style.opacity = "0";
+      this.remoteVideo.style.top = "0";
+      this.remoteVideo.style.left = "0";
+      this.remoteVideo.style.width = "480px";
+      this.remoteVideo.style.height = "270px";
+      this.remoteVideo.style.zIndex = "-9999";
       this.remoteVideo.style.pointerEvents = "none";
-      this.remoteVideo.style.width = "1px";
-      this.remoteVideo.style.height = "1px";
-      this.remoteVideo.style.bottom = "0";
-      this.remoteVideo.style.right = "0";
+      this.remoteVideo.style.opacity = "0.01";
+      this.remoteVideo.style.transform = "scale(0.01)";
+      this.remoteVideo.style.transformOrigin = "top left";
+      this.remoteVideo.style.visibility = "visible";
       document.body.appendChild(this.remoteVideo);
     }
   }
@@ -213,7 +239,18 @@ class XmaxSessionManager {
         refImageUrl: resolvedRefImage,
       });
 
-      const session = await this.client.realtime.connect(options.stream, {
+      // Prepare dedicated outbound stream to isolate from local audio muting or track interference
+      const videoTracks = options.stream.getVideoTracks();
+      if (!videoTracks || videoTracks.length === 0) {
+        throw new Error("No active camera video track found");
+      }
+      const outboundStream = new MediaStream([videoTracks[0]]);
+      const audioTracks = options.stream.getAudioTracks();
+      if (audioTracks && audioTracks.length > 0) {
+        outboundStream.addTrack(audioTracks[0]);
+      }
+
+      const session = await this.client.realtime.connect(outboundStream, {
         // Select the X2.0 realtime video generation model
         model: models.realtime("x2.0"),
 

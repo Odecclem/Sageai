@@ -22,6 +22,8 @@ import {
   Monitor,
   Eye,
   EyeOff,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { StreamBroadcastPayload, StreamViewMode } from "@/lib/videoEngine";
 
@@ -46,6 +48,36 @@ function ObsContent() {
   const [isMutedLocal, setIsMutedLocal] = useState(false);
   const [isCamOffLocal, setIsCamOffLocal] = useState(false);
   const [showModeSwitcher, setShowModeSwitcher] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = useCallback(() => {
+    if (typeof document !== "undefined") {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+        setIsFullscreen(true);
+      } else {
+        document.exitFullscreen().catch(() => {});
+        setIsFullscreen(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "f" || e.key === "F") {
+        toggleFullscreen();
+      }
+    };
+    const handleFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    window.addEventListener("keydown", handleKey);
+    document.addEventListener("fullscreenchange", handleFsChange);
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+      document.removeEventListener("fullscreenchange", handleFsChange);
+    };
+  }, [toggleFullscreen]);
 
   const lastFrameTimeRef = useRef<number>(0);
   const latestImgRef = useRef<HTMLImageElement | null>(null);
@@ -190,7 +222,11 @@ function ObsContent() {
     viewMode === "android_clean";
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-black flex items-center justify-center select-none font-sans">
+    <div
+      onDoubleClick={toggleFullscreen}
+      className="relative w-screen h-screen overflow-hidden bg-black flex items-center justify-center select-none font-sans cursor-default"
+      title="Double-click to toggle borderless fullscreen"
+    >
       {/* Blurred Ambient Video Background for mobile aspect ratio */}
       {isAndroidView && (
         <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30 blur-3xl scale-125">
@@ -476,26 +512,10 @@ function ObsContent() {
             </div>
           </>
         )}
-
-        {/* Live Status / Preview Watermark Badge (when not in full HUD) */}
-        {(isCameraActive || isLive) && (
-          <div className="absolute top-3 right-3 z-40 opacity-50 hover:opacity-100 transition-opacity pointer-events-none">
-            <div className="flex items-center gap-1.5 bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-[10px] font-mono text-zinc-200">
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  isLive ? "bg-rose-500 animate-pulse" : "bg-emerald-400"
-                }`}
-              />
-              <span>{isLive ? `LIVE ${formatCallTime(callDuration)}` : "PREVIEW"}</span>
-              <span className="text-zinc-500">·</span>
-              <span>{fps > 0 ? `${fps} FPS` : "60 FPS"}</span>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* FLOATING OUTPUT CONTROLS & VIEW SWITCHER (Hover pill at bottom-right) */}
-      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
+      {/* FLOATING OUTPUT CONTROLS & VIEW SWITCHER (Discreet hover pill at bottom-right) */}
+      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 opacity-30 hover:opacity-100 transition-opacity">
         {showModeSwitcher && (
           <div className="flex items-center gap-1.5 bg-zinc-900/95 backdrop-blur-xl border border-white/15 p-1.5 rounded-2xl shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
             {/* View Mode Buttons */}
@@ -555,6 +575,17 @@ function ObsContent() {
                 {showHud ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
               </button>
             )}
+
+            {/* Borderless Fullscreen Toggle (Hides browser URL bar) */}
+            <button
+              onClick={toggleFullscreen}
+              className={`p-1.5 rounded-xl text-xs transition-colors ${
+                isFullscreen ? "bg-blue-600 text-white" : "text-zinc-300 hover:bg-white/10"
+              }`}
+              title={isFullscreen ? "Exit Fullscreen" : "Borderless Fullscreen (Hides Address Bar for Window Capture)"}
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
           </div>
         )}
 
@@ -562,7 +593,7 @@ function ObsContent() {
         <button
           onClick={() => setShowModeSwitcher(!showModeSwitcher)}
           className="h-10 w-10 rounded-full bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-white/15 flex items-center justify-center shadow-xl backdrop-blur-md transition-all cursor-pointer"
-          title="Switch Output View (Desktop / Android WhatsApp / Telegram)"
+          title="Switch Output View (Desktop / Android WhatsApp / Telegram) or Toggle Fullscreen"
         >
           <Smartphone className="h-4 w-4" />
         </button>
