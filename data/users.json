@@ -8,7 +8,7 @@
     "creditBalance": 25878,
     "totalSecondsStreamed": 122,
     "createdAt": "2026-10-21T16:24:41.152Z",
-    "lastLoginAt": "2026-10-23T16:42:48.713Z"
+    "lastLoginAt": "2026-10-23T17:32:22.577Z"
   },
   {
     "id": "usr_alex_02",
@@ -82,5 +82,16 @@
     "totalSecondsStreamed": 0,
     "createdAt": "2026-10-23T16:40:24.903Z",
     "lastLoginAt": "2026-10-23T16:45:18.977Z"
+  },
+  {
+    "id": "usr_1792774917768_8tdrc",
+    "name": "james",
+    "email": "james@gmail.com",
+    "passwordHash": "ea8a832c1113a9dd6cccb10e56f0f5d8:c210e4bb41f96406599e1ee40cb3a429e646f4f819f236921474834fa2f9f3dffff958fb2db4658e23c470cf70acadaa403304229fd8277d3f32fdeb3fa60226",
+    "role": "user",
+    "creditBalance": 270,
+    "totalSecondsStreamed": 230,
+    "createdAt": "2026-10-23T17:01:57.773Z",
+    "lastLoginAt": "2026-10-23T17:34:36.001Z"
   }
 ]

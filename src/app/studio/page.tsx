@@ -376,6 +376,22 @@ export default function CreatorStudioPage() {
     } catch {
       // Ignore
     }
+
+    // 1. Notify OBS stream channel that stream has ended
+    engineRef.current?.broadcastStreamEnd(streamKey);
+
+    // 2. Shut off camera hardware and clear video tracks
+    engineRef.current?.stopCamera();
+    setIsCameraActive(false);
+
+    // 3. Disconnect XMax AI neural stream
+    getXmaxManager().disconnect();
+    engineRef.current?.setRemoteVideo(null);
+    engineRef.current?.setCloudConnecting(false);
+    setXmaxSessionState("idle");
+
+    // 4. Reset stream duration
+    setStreamDuration(0);
   }, [streamKey]);
 
   useEffect(() => {
@@ -423,51 +439,7 @@ export default function CreatorStudioPage() {
     startLiveStreamRef.current = startLiveStream;
   }, [startLiveStream]);
 
-  // Start Camera & Auto-start Realtime Swap Countdown
-  const toggleCamera = async (wantLiveParam?: boolean | React.SyntheticEvent) => {
-    const wantLive = typeof wantLiveParam === "boolean" ? wantLiveParam : true;
-    if (!engineRef.current || !videoRef.current || !canvasRef.current) return;
-
-    if (isCameraActive) {
-      engineRef.current.stopCamera();
-      engineRef.current.setRemoteVideo(null);
-      getXmaxManager().disconnect();
-      setXmaxSessionState("idle");
-      setIsCameraActive(false);
-      setIsPendingStream(false);
-      if (isLive) {
-        stopLiveStream();
-      }
-    } else {
-      try {
-        setErrorMessage(null);
-        await engineRef.current.startCamera(videoRef.current, canvasRef.current);
-        setIsCameraActive(true);
-
-        if (provider === "xmax" && (xmaxStatus?.valid || activeXmaxKey || process.env.NEXT_PUBLIC_XMAX_API_KEY)) {
-          if (wantLive && creditBalance > 0) {
-            // User requested live swap. Wait for XMax to be running before counting down credits
-            setIsPendingStream(true);
-          }
-          connectXmaxRealtime(activeXmaxKey);
-        } else if (customImageSrc) {
-          engineRef.current.setCustomCharacterImage(customImageSrc);
-          if (wantLive && creditBalance > 0) {
-            startLiveStream(creditBalance);
-          }
-        } else {
-          engineRef.current.setFilter(currentPersona.filterMode as FilterType, intensity, customPrompt);
-          if (wantLive && creditBalance > 0) {
-            startLiveStream(creditBalance);
-          }
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Failed to access webcam";
-        setErrorMessage(`Camera error: ${msg}. Please allow webcam permission in browser.`);
-      }
-    }
-  };
-
+  // Start Live Real-time Swap: activates camera + connects AI face swap + starts countdown metering
   const requestStartLiveSwap = async () => {
     if (creditBalance <= 0) {
       setErrorMessage("0 credits remaining. Top up your wallet to activate real-time swap countdown metering.");
@@ -475,25 +447,60 @@ export default function CreatorStudioPage() {
       return;
     }
 
+    setErrorMessage(null);
+
+    // 1. Activate Camera if not already active
     if (!isCameraActive) {
-      await toggleCamera(true);
-      return;
+      try {
+        if (!engineRef.current || !videoRef.current || !canvasRef.current) return;
+        await engineRef.current.startCamera(videoRef.current, canvasRef.current);
+        setIsCameraActive(true);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to access webcam";
+        setErrorMessage(`Camera error: ${msg}. Please allow webcam permission in your browser.`);
+        return;
+      }
     }
 
-    if (provider === "xmax") {
+    // 2. Apply Custom Image or AI Persona filter
+    if (customImageSrc) {
+      engineRef.current?.setCustomCharacterImage(customImageSrc);
+    } else {
+      engineRef.current?.setFilter(currentPersona.filterMode as FilterType, intensity, customPrompt);
+    }
+
+    // 3. If using XMax Real-time Neural Stream
+    const keyToUse = activeXmaxKey || process.env.NEXT_PUBLIC_XMAX_API_KEY;
+    if (provider === "xmax" && (xmaxStatus?.valid || keyToUse)) {
       const xmax = getXmaxManager();
       const isXmaxReady = xmaxSessionState === "streaming" && xmax.hasLiveFrames();
       if (isXmaxReady) {
-        // XMax is already running and producing frames! Start stream and countdown immediately!
         await startLiveStream();
       } else {
-        // XMax is not running yet. Set pending stream and connect XMax.
         setIsPendingStream(true);
-        setErrorMessage(null);
-        await connectXmaxRealtime();
+        connectXmaxRealtime(keyToUse);
+
+        // Fallback safety timeout: if XMax takes longer than 7s, start with local cam so creator stream doesn't hang
+        setTimeout(async () => {
+          if (isPendingStreamRef.current && !isLiveRef.current) {
+            console.warn("Sage AI: XMax connecting timed out, starting live swap with local neural cam.");
+            engineRef.current?.setCloudConnecting(false);
+            await startLiveStreamRef.current(creditBalanceRef.current);
+          }
+        }, 7000);
       }
     } else {
+      // Local or Custom Character Real-time Swap
       await startLiveStream();
+    }
+  };
+
+  // Camera toggle button (under video preview): syncs directly with live swap
+  const toggleCamera = async () => {
+    if (isCameraActive || isLive) {
+      await stopLiveStream();
+    } else {
+      await requestStartLiveSwap();
     }
   };
 
@@ -892,22 +899,22 @@ export default function CreatorStudioPage() {
                 onClick={stopLiveStream}
                 className="flex items-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-rose-700 transition-all cursor-pointer"
               >
-                <Radio className="h-4 w-4" /> Stop Real-Time Swap
+                <Radio className="h-4 w-4" /> Stop Live Swap Metering
               </button>
             ) : isPendingStream ? (
               <button
-                onClick={() => setIsPendingStream(false)}
+                onClick={stopLiveStream}
                 className="flex items-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-700 px-5 py-2.5 text-xs font-semibold text-white shadow-xs transition-all cursor-pointer"
-                title="Click to cancel pending connection"
+                title="Click to cancel connection and stop"
               >
-                <RefreshCw className="h-4 w-4 animate-spin text-white" /> Connecting Stream (Timer Paused)...
+                <RefreshCw className="h-4 w-4 animate-spin text-white" /> Connecting Stream (Click to Stop)...
               </button>
             ) : (
               <button
                 onClick={requestStartLiveSwap}
                 className="flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 px-5 py-2.5 text-xs font-semibold text-white shadow-xs transition-all cursor-pointer"
               >
-                <Radio className="h-4 w-4" /> Start Real-Time Swap (1 cred/sec)
+                <Radio className="h-4 w-4" /> Start Live Swap Metering (1 cred/sec)
               </button>
             )}
           </div>
@@ -1012,7 +1019,7 @@ export default function CreatorStudioPage() {
                     onClick={toggleCamera}
                     className="mt-4 flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors cursor-pointer shadow-xs"
                   >
-                    <Camera className="h-3.5 w-3.5" /> Turn On Camera
+                    <Camera className="h-3.5 w-3.5" /> Turn On Camera & Start Live Swap
                   </button>
                 </div>
               )}
@@ -1367,14 +1374,15 @@ export default function CreatorStudioPage() {
                     onClick={stopLiveStream}
                     className="w-full flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-700 py-2.5 text-xs font-semibold text-white shadow-xs transition-all cursor-pointer"
                   >
-                    <Radio className="h-3.5 w-3.5" /> Pause Swap Metering
+                    <Radio className="h-3.5 w-3.5" /> Stop Live Swap Metering
                   </button>
                 ) : isPendingStream ? (
                   <button
-                    onClick={() => setIsPendingStream(false)}
+                    onClick={stopLiveStream}
                     className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-700 py-2.5 text-xs font-semibold text-white shadow-xs transition-all cursor-pointer"
+                    title="Click to cancel and stop"
                   >
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Initializing Stream (Timer Paused)...
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Connecting Stream (Click to Stop)...
                   </button>
                 ) : (
                   <button

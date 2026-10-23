@@ -217,6 +217,12 @@ export class VideoTransformationEngine {
     if (this.videoElement) {
       this.videoElement.srcObject = null;
     }
+    if (this.canvasElement) {
+      const ctx = this.canvasElement.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+      }
+    }
     if (this.audioContext && this.audioContext.state !== "closed") {
       this.audioContext.close().catch(() => {});
       this.audioContext = null;
@@ -316,6 +322,20 @@ export class VideoTransformationEngine {
         console.error("Broadcast frame error:", err);
       }
     }
+  }
+
+  public broadcastStreamEnd(streamKey: string) {
+    if (!this.broadcastChannel) return;
+    try {
+      this.broadcastChannel.postMessage({
+        type: "STREAM_END",
+        streamKey,
+        isLive: false,
+        personaId: "",
+        fps: 0,
+        timestamp: Date.now(),
+      });
+    } catch {}
   }
 
   private startLoop() {
