@@ -11,12 +11,13 @@ export interface Transaction {
   amount: number; // in USD or NGN
   currency: string; // "USD" | "NGN"
   creditsAdded: number;
-  paymentProvider: "flutterwave" | "stripe" | "sandbox" | "admin_grant";
+  paymentProvider: "korapay" | "flutterwave" | "stripe" | "sandbox" | "admin_grant";
   status: "succeeded" | "pending" | "failed";
   stripeSessionId?: string;
   stripePaymentIntentId?: string;
   flwTransactionId?: string;
   flwTxRef?: string;
+  koraReference?: string;
   createdAt: string;
 }
 
@@ -92,6 +93,16 @@ export const transactionStore = {
   getByFlwTxRef(txRef: string): Transaction | null {
     const txns = ensureTransactionsFile();
     return txns.find((t) => t.flwTxRef === txRef) || null;
+  },
+
+  getByKoraReference(ref: string): Transaction | null {
+    const txns = ensureTransactionsFile();
+    return txns.find((t) => t.koraReference === ref) || null;
+  },
+
+  getByReference(ref: string): Transaction | null {
+    const txns = ensureTransactionsFile();
+    return txns.find((t) => t.koraReference === ref || t.flwTxRef === ref) || null;
   },
 
   create(

@@ -29,10 +29,11 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   pack_id TEXT NOT NULL,
   pack_name TEXT NOT NULL,
   amount NUMERIC(12, 2) NOT NULL,
-  currency TEXT NOT NULL DEFAULT 'USD',
+  currency TEXT NOT NULL DEFAULT 'NGN',
   credits_added INTEGER NOT NULL,
-  payment_provider TEXT NOT NULL CHECK (payment_provider IN ('flutterwave', 'stripe', 'sandbox', 'admin_grant')),
+  payment_provider TEXT NOT NULL CHECK (payment_provider IN ('korapay', 'flutterwave', 'stripe', 'sandbox', 'admin_grant')),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('succeeded', 'pending', 'failed')),
+  kora_reference TEXT,
   flw_transaction_id TEXT,
   flw_tx_ref TEXT,
   stripe_session_id TEXT,
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 
 -- Indexes for transactions
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON public.transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_kora_ref ON public.transactions(kora_reference);
 CREATE INDEX IF NOT EXISTS idx_transactions_flw_tx_ref ON public.transactions(flw_tx_ref);
 CREATE INDEX IF NOT EXISTS idx_transactions_status ON public.transactions(status);
 CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON public.transactions(created_at DESC);

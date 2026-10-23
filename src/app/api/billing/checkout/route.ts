@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { PRICING_PACKS } from "@/lib/store";
-import { isFlutterwaveConfigured, initiatePayment } from "@/lib/flutterwave";
+import { isKorapayConfigured, initiatePayment as initiateKoraPayment } from "@/lib/korapay";
+import { isFlutterwaveConfigured, initiatePayment as initiateFlwPayment } from "@/lib/flutterwave";
 import { transactionStore } from "@/lib/transactionStore";
 
 export async function POST(req: Request) {
@@ -26,11 +27,49 @@ export async function POST(req: Request) {
     const protocol = host.includes("localhost") ? "http" : "https";
     const origin = `${protocol}://${host}`;
 
-    // Generate a unique transaction reference
-    const txRef = `flw_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    // 1. KORAPAY GATEWAY (Primary)
+    if (isKorapayConfigured) {
+      const koraRef = `kora_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
+      const txn = transactionStore.create({
+        userId: user.id,
+        userEmail: user.email,
+        userName: user.name,
+        packId: pack.id,
+        packName: pack.name,
+        amount: pack.priceNgn || pack.priceUsd,
+        currency: pack.priceNgn ? "NGN" : "USD",
+        creditsAdded: pack.credits,
+        paymentProvider: "korapay",
+        status: "pending",
+        koraReference: koraRef,
+      });
+
+      const { checkoutUrl, reference } = await initiateKoraPayment({
+        reference: koraRef,
+        amount: pack.priceNgn || pack.priceUsd,
+        currency: pack.priceNgn ? "NGN" : "USD",
+        redirect_url: `${origin}/api/billing/verify?reference=${koraRef}`,
+        notification_url: `${origin}/api/billing/webhook`,
+        narration: `${pack.name} - ${pack.credits.toLocaleString()} Streaming Credits`,
+        customer: {
+          name: user.name,
+          email: user.email,
+        },
+      });
+
+      return NextResponse.json({
+        mode: "korapay",
+        checkoutUrl,
+        reference,
+        transactionId: txn.id,
+      });
+    }
+
+    // 2. FLUTTERWAVE GATEWAY (Secondary Fallback)
     if (isFlutterwaveConfigured) {
-      // 1. Create a pending transaction record
+      const txRef = `flw_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
       const txn = transactionStore.create({
         userId: user.id,
         userEmail: user.email,
@@ -45,8 +84,7 @@ export async function POST(req: Request) {
         flwTxRef: txRef,
       });
 
-      // 2. Initiate Flutterwave Standard hosted checkout
-      const { link } = await initiatePayment({
+      const { link } = await initiateFlwPayment({
         tx_ref: txRef,
         amount: pack.priceNgn || pack.priceUsd,
         currency: pack.priceNgn ? "NGN" : "USD",
@@ -57,13 +95,7 @@ export async function POST(req: Request) {
         },
         customizations: {
           title: "Sage AI Studio",
-          description: `${pack.name} - ${pack.credits.toLocaleString()} Streaming Credits (~${pack.minutesApprox} min live)`,
-        },
-        meta: {
-          userId: user.id,
-          packId: pack.id,
-          credits: String(pack.credits),
-          transactionId: txn.id,
+          description: `${pack.name} - ${pack.credits.toLocaleString()} Streaming Credits`,
         },
       });
 
@@ -75,16 +107,15 @@ export async function POST(req: Request) {
       });
     }
 
-    // Fallback: Sandbox / Development Mode when Flutterwave keys are not yet configured
+    // 3. SANDBOX DEVELOPMENT MODE (Fallback)
     return NextResponse.json({
       mode: "sandbox",
       pack,
       user,
-      message:
-        "Flutterwave API keys are not yet configured in .env.local. You can test purchases in Sandbox Mode or configure FLW_PUBLIC_KEY and FLW_SECRET_KEY.",
+      message: "Gateway keys not detected. You can test purchases in Sandbox Mode.",
     });
   } catch (err: unknown) {
-    console.error("Flutterwave Checkout Error:", err);
+    console.error("Payment Checkout Error:", err);
     const message = err instanceof Error ? err.message : "Failed to initiate checkout";
     return NextResponse.json({ error: message }, { status: 500 });
   }

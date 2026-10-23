@@ -35,7 +35,7 @@ export function TopUpModal({ isOpen, onClose, onSuccess, initialPackId }: TopUpM
     setSuccessMessage(null);
     setCheckoutError(null);
     try {
-      // 1. Try initiating Flutterwave Checkout session
+      // 1. Initiate Checkout session (Korapay / Gateway)
       const checkoutRes = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -47,13 +47,13 @@ export function TopUpModal({ isOpen, onClose, onSuccess, initialPackId }: TopUpM
         throw new Error(checkoutData.error || "Failed to start checkout");
       }
 
-      // If Flutterwave is live, redirect to hosted checkout
-      if (checkoutData.mode === "flutterwave" && checkoutData.checkoutUrl) {
+      // If hosted checkout is available (Korapay or Flutterwave), redirect to secure payment page
+      if (checkoutData.checkoutUrl) {
         window.location.href = checkoutData.checkoutUrl;
         return;
       }
 
-      // Fallback: Sandbox mode fulfillment when Flutterwave keys are not yet configured
+      // Fallback: Sandbox mode fulfillment when live gateway is not configured
       const res = await fetch("/api/billing/topup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -139,8 +139,12 @@ export function TopUpModal({ isOpen, onClose, onSuccess, initialPackId }: TopUpM
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-slate-100 flex items-baseline justify-between">
-                  <span className="text-sm font-bold text-slate-900">${pack.priceUsd}</span>
-                  <span className="text-[10px] text-slate-400 font-mono">USD</span>
+                  <span className="text-sm font-bold text-slate-900">
+                    {pack.priceNgn ? `₦${pack.priceNgn.toLocaleString()}` : `$${pack.priceUsd}`}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {pack.priceNgn ? `$${pack.priceUsd} USD` : "USD"}
+                  </span>
                 </div>
               </div>
             );
@@ -159,7 +163,16 @@ export function TopUpModal({ isOpen, onClose, onSuccess, initialPackId }: TopUpM
           </div>
           <div className="flex items-center justify-between text-sm font-bold text-slate-900 pt-2.5 border-t border-slate-200">
             <span>Total Payable</span>
-            <span className="text-base text-blue-600 font-mono">${selectedPack.priceUsd} USD</span>
+            <div className="text-right">
+              <span className="text-base text-blue-600 font-bold font-mono">
+                {selectedPack.priceNgn ? `₦${selectedPack.priceNgn.toLocaleString()}` : `$${selectedPack.priceUsd} USD`}
+              </span>
+              {selectedPack.priceNgn && (
+                <span className="text-[11px] text-slate-400 block font-normal font-mono">
+                  (${selectedPack.priceUsd} USD)
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

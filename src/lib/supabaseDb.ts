@@ -31,10 +31,11 @@ export interface DbTransactionRow {
   amount: number;
   currency: string;
   credits_added: number;
-  payment_provider: "flutterwave" | "stripe" | "sandbox" | "admin_grant";
+  payment_provider: "korapay" | "flutterwave" | "stripe" | "sandbox" | "admin_grant";
   status: "succeeded" | "pending" | "failed";
   flw_transaction_id?: string | null;
   flw_tx_ref?: string | null;
+  kora_reference?: string | null;
   stripe_session_id?: string | null;
   stripe_payment_intent_id?: string | null;
   created_at: string;
@@ -68,6 +69,7 @@ function mapRowToTransaction(row: DbTransactionRow): Transaction {
     status: row.status,
     flwTransactionId: row.flw_transaction_id || undefined,
     flwTxRef: row.flw_tx_ref || undefined,
+    koraReference: row.kora_reference || undefined,
     stripeSessionId: row.stripe_session_id || undefined,
     stripePaymentIntentId: row.stripe_payment_intent_id || undefined,
     createdAt: row.created_at,
@@ -231,7 +233,7 @@ export const supabaseDb = {
   async createTransaction(txn: Transaction): Promise<{ success: boolean; error?: string }> {
     if (!this.isConfigured() || !supabaseAdmin) return { success: false, error: "Supabase not configured" };
 
-    const { error } = await supabaseAdmin.from("transactions").insert({
+    const insertData: Record<string, unknown> = {
       id: txn.id,
       user_id: txn.userId,
       user_email: txn.userEmail,
@@ -243,12 +245,23 @@ export const supabaseDb = {
       credits_added: txn.creditsAdded,
       payment_provider: txn.paymentProvider,
       status: txn.status,
+      kora_reference: txn.koraReference || null,
       flw_transaction_id: txn.flwTransactionId || null,
       flw_tx_ref: txn.flwTxRef || null,
       stripe_session_id: txn.stripeSessionId || null,
       stripe_payment_intent_id: txn.stripePaymentIntentId || null,
       created_at: txn.createdAt,
-    });
+    };
+
+    let { error } = await supabaseAdmin.from("transactions").insert(insertData);
+
+    // If table in Supabase hasn't added kora_reference column yet, retry without it
+    if (error && error.message?.includes("kora_reference")) {
+      const fallbackData = { ...insertData };
+      delete fallbackData.kora_reference;
+      const retry = await supabaseAdmin.from("transactions").insert(fallbackData);
+      error = retry.error;
+    }
 
     if (error) return { success: false, error: error.message };
     return { success: true };
@@ -262,12 +275,19 @@ export const supabaseDb = {
     if (!this.isConfigured() || !supabaseAdmin) return { success: false, error: "Supabase not configured" };
 
     const updatePayload: Record<string, unknown> = { status };
+    if (extra?.koraReference) updatePayload.kora_reference = extra.koraReference;
     if (extra?.flwTransactionId) updatePayload.flw_transaction_id = extra.flwTransactionId;
     if (extra?.flwTxRef) updatePayload.flw_tx_ref = extra.flwTxRef;
     if (extra?.stripeSessionId) updatePayload.stripe_session_id = extra.stripeSessionId;
     if (extra?.stripePaymentIntentId) updatePayload.stripe_payment_intent_id = extra.stripePaymentIntentId;
 
-    const { error } = await supabaseAdmin.from("transactions").update(updatePayload).eq("id", id);
+    let { error } = await supabaseAdmin.from("transactions").update(updatePayload).eq("id", id);
+    if (error && error.message?.includes("kora_reference")) {
+      delete updatePayload.kora_reference;
+      const retry = await supabaseAdmin.from("transactions").update(updatePayload).eq("id", id);
+      error = retry.error;
+    }
+
     if (error) return { success: false, error: error.message };
     return { success: true };
   },
