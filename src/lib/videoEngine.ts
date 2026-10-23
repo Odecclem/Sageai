@@ -633,7 +633,7 @@ export class VideoTransformationEngine {
     const dotsStr = ".".repeat(dotsCount);
     ctx.font = "bold 13px monospace";
     ctx.fillStyle = "#22d3ee";
-    ctx.fillText("XMax Cloud Pipeline x2.0" + dotsStr, cx, cy + 176);
+    ctx.fillText("Sage Neural Pipeline v2.0" + dotsStr, cx, cy + 176);
 
     // 5. Sleek Progress Bar Track
     const barWidth = 260;

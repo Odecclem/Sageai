@@ -401,7 +401,7 @@ export default function LandingPage() {
                   <span className="text-slate-500">Discord & Telegram Virtual Cam</span>
                 </li>
                 <li>
-                  <span className="text-slate-500">XMax Cloud GPU Streaming</span>
+                  <span className="text-slate-500">Sage AI Neural Cloud Streaming</span>
                 </li>
               </ul>
             </div>

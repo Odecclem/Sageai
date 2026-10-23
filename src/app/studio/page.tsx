@@ -243,7 +243,7 @@ export default function CreatorStudioPage() {
       });
     } catch (err: unknown) {
       if (isExplicitlyStoppedRef.current) return;
-      const msg = err instanceof Error ? err.message : "Failed to connect to XMax Cloud";
+      const msg = err instanceof Error ? err.message : "Failed to connect to Neural Cloud Engine";
       setErrorMessage(msg);
       setXmaxSessionState("error");
       engineRef.current?.setCloudConnecting(false);
@@ -276,10 +276,10 @@ export default function CreatorStudioPage() {
           connectXmaxRealtime(key.trim());
         }
       } else {
-        setErrorMessage(data.error || "Failed to verify XMax API key");
+        setErrorMessage(data.error || "Failed to verify Neural Engine key");
       }
     } catch {
-      setErrorMessage("Network error while verifying XMax API key");
+      setErrorMessage("Network error while verifying Neural Engine key");
     } finally {
       setIsSavingXmaxKey(false);
     }
@@ -1026,7 +1026,7 @@ export default function CreatorStudioPage() {
 
                     <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-500/40 text-[11px] font-mono text-emerald-300">
                       <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-                      <span>Timer Paused: 0 Credits Deducted · Starts strictly on 1st XMax AI video frame</span>
+                      <span>Timer Paused: 0 Credits Deducted · Starts strictly on 1st AI video frame</span>
                     </div>
 
                     {/* Pipeline Stage Pills */}
@@ -1374,13 +1374,13 @@ export default function CreatorStudioPage() {
                 </div>
               </div>
 
-              {/* XMax Real-Time Cloud API Reading Alignment Card */}
-              {provider === "xmax" && (
+              {/* Sage AI Cloud Neural GPU Infrastructure (Admin Only) */}
+              {currentUser?.role === "admin" && provider === "xmax" && (
                 <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/60 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
                       <Zap className="h-3.5 w-3.5 text-blue-600" />
-                      XMax API Cloud Credit Reading
+                      Sage Neural Cloud Infrastructure (Admin)
                     </span>
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${
                       isLive && xmaxSessionState === "streaming"
@@ -1407,10 +1407,10 @@ export default function CreatorStudioPage() {
                   <div className="flex items-baseline justify-between pt-0.5">
                     <div>
                       <div className="text-xl font-mono font-extrabold text-blue-900">
-                        {typeof xmaxStatus?.balance === "number" ? `${xmaxStatus.balance.toLocaleString()} Units` : "546 Units"}
+                        {typeof xmaxStatus?.balance === "number" ? `${xmaxStatus.balance.toLocaleString()} Units` : "Active"}
                       </div>
                       <div className="text-[10px] text-blue-700/80">
-                        Live upstream XMax API balance
+                        Upstream Cloud GPU compute reserve
                       </div>
                     </div>
 
@@ -1432,8 +1432,8 @@ export default function CreatorStudioPage() {
                     <ShieldCheck className="h-3.5 w-3.5 text-blue-600 shrink-0 mt-0.5" />
                     <span>
                       {isLive && xmaxSessionState === "streaming"
-                        ? "Timer and credit burn are synchronized with live XMax GPU video delivery."
-                        : "Synchronized with XMax API: Credits only start counting when XMax begins generating video frames."}
+                        ? "Timer and credit burn are synchronized with live Cloud GPU video delivery."
+                        : "Synchronized with Neural GPU: Credits only start counting when the AI begins generating video frames."}
                     </span>
                   </div>
                 </div>
@@ -1875,7 +1875,7 @@ export default function CreatorStudioPage() {
             </p>
 
             <div className="space-y-2 mb-4">
-              {/* Option 1: XMax AI */}
+              {/* Option 1: Sage AI Ultra-HD Neural Cloud */}
               <label
                 onClick={() => handleSwitchProvider("xmax")}
                 className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
@@ -1884,7 +1884,7 @@ export default function CreatorStudioPage() {
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-900">XMax AI Real-Time Cloud</span>
+                    <span className="text-xs font-bold text-slate-900">Sage AI Ultra-HD Neural Cloud</span>
                     <span className="text-[9px] bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded-full border border-blue-200">
                       Standard
                     </span>
@@ -1895,7 +1895,7 @@ export default function CreatorStudioPage() {
                     )}
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5">
-                    Photorealistic cloud GPU reenactment (WebRTC CharX model)
+                    Photorealistic cloud GPU reenactment (Ultra-low latency Neural Stream)
                   </div>
                 </div>
                 {provider === "xmax" && <Check className="h-4 w-4 text-blue-600 shrink-0" />}
@@ -1941,11 +1941,11 @@ export default function CreatorStudioPage() {
               </label>
             </div>
 
-            {/* XMax Configuration Box */}
+            {/* Neural Cloud Engine Configuration Box */}
             {provider === "xmax" && (
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 mb-4 text-xs space-y-2.5">
                 <div className="flex items-center justify-between text-slate-700">
-                  <span className="font-semibold">Platform XMax Cloud Status:</span>
+                  <span className="font-semibold">Platform Neural Engine Status:</span>
                   {xmaxStatus?.valid ? (
                     <span className="text-emerald-700 font-semibold flex items-center gap-1">
                       <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> System Key Active
@@ -1963,9 +1963,9 @@ export default function CreatorStudioPage() {
                         {xmaxStatus.actualApiKey ? xmaxStatus.actualApiKey.slice(0, 8) + "..." + xmaxStatus.actualApiKey.slice(-4) : "Configured by Admin"}
                       </span>
                     </div>
-                    {xmaxStatus.remainingCredits !== undefined && xmaxStatus.remainingCredits !== null && (
+                    {currentUser?.role === "admin" && xmaxStatus.remainingCredits !== undefined && xmaxStatus.remainingCredits !== null && (
                       <div className="flex items-center justify-between text-slate-600 pt-1 border-t border-slate-100">
-                        <span>XMax Cloud Reserve:</span>
+                        <span>Cloud GPU Reserve:</span>
                         <span className={`font-mono font-bold flex items-center gap-1 ${xmaxStatus.remainingCredits > 0 ? "text-blue-600" : "text-rose-600"}`}>
                           <Zap className="h-3 w-3 text-blue-600" />
                           <span>{xmaxStatus.remainingCredits.toLocaleString()} credits</span>
@@ -1973,12 +1973,12 @@ export default function CreatorStudioPage() {
                       </div>
                     )}
                     <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-100">
-                      Model: <code className="text-blue-600 font-mono">models.realtime(&apos;x2.0&apos;)</code> · Sub-second WebRTC
+                      Engine: <code className="text-blue-600 font-mono">Sage Neural Stream v2.0</code> · Sub-second WebRTC
                     </div>
                   </div>
                 ) : (
                   <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] leading-relaxed space-y-1">
-                    <div>The platform master XMax key has not been connected yet.</div>
+                    <div>The platform master neural engine key has not been connected yet.</div>
                     {currentUser?.role === "admin" ? (
                       <Link
                         href="/admin"

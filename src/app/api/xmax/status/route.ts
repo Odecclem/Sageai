@@ -17,35 +17,45 @@ export async function GET() {
     const data = await stsRes.json().catch(() => ({}));
 
     if (data.code === 200 || data.success) {
-      let remainingCredits: number | null = null;
-      let userId: string | null = null;
+      // Only admins are authorized to view upstream XMax API credit balance
+      if (isAdmin) {
+        let remainingCredits: number | null = null;
+        let userId: string | null = null;
 
-      try {
-        const balanceRes = await fetch("https://api.xmax.ai/open/api/v1/balance", {
-          headers: { "X-Api-Key": apiKey },
-          cache: "no-store",
-        });
-        if (balanceRes.ok) {
-          const bData = await balanceRes.json().catch(() => ({}));
-          if (bData.success && bData.data) {
-            remainingCredits = typeof bData.data.currentBalance === "number" ? bData.data.currentBalance : null;
-            userId = bData.data.userId || null;
+        try {
+          const balanceRes = await fetch("https://api.xmax.ai/open/api/v1/balance", {
+            headers: { "X-Api-Key": apiKey },
+            cache: "no-store",
+          });
+          if (balanceRes.ok) {
+            const bData = await balanceRes.json().catch(() => ({}));
+            if (bData.success && bData.data) {
+              remainingCredits = typeof bData.data.currentBalance === "number" ? bData.data.currentBalance : null;
+              userId = bData.data.userId || null;
+            }
           }
+        } catch {
+          // Ignore balance fetch failure
         }
-      } catch {
-        // Ignore balance fetch failure
+
+        return NextResponse.json({
+          configured: true,
+          valid: true,
+          actualApiKey: apiKey,
+          apiKey: apiKey,
+          maskedKey: apiKey.slice(0, 6) + "..." + apiKey.slice(-4),
+          remainingCredits,
+          balance: remainingCredits,
+          userId,
+          region: "global",
+        });
       }
 
+      // For regular users/creators, return only operational flags without exposing upstream balance
       return NextResponse.json({
         configured: true,
         valid: true,
-        actualApiKey: apiKey,
         apiKey: apiKey,
-        maskedKey: apiKey.slice(0, 6) + "..." + apiKey.slice(-4),
-        remainingCredits,
-        balance: remainingCredits,
-        userId: isAdmin ? userId : undefined,
-        region: "global",
       });
     } else {
       if (isAdmin) {
