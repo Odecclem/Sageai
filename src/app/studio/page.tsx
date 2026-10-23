@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useCallback, useId } from "react";
 import { Navbar } from "@/components/Navbar";
 import { TopUpModal } from "@/components/TopUpModal";
 import { PERSONA_PRESETS, Persona, SAMPLE_CHARACTERS } from "@/lib/store";
-import { VideoTransformationEngine, FilterType } from "@/lib/videoEngine";
+import { VideoTransformationEngine, FilterType, StreamViewMode } from "@/lib/videoEngine";
 import {
   Camera,
   CameraOff,
@@ -42,6 +42,10 @@ import {
   UserPlus,
   UserCheck,
   ArrowRight,
+  Smartphone,
+  Monitor,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { getXmaxManager, DEFAULT_XMAX_REF_IMAGE_PROMPT } from "@/lib/xmaxClient";
 
@@ -70,6 +74,9 @@ export default function CreatorStudioPage() {
 
   const [streamKey, setStreamKey] = useState("sage_live_89d83");
   const [copiedObs, setCopiedObs] = useState(false);
+  const [viewMode, setViewMode] = useState<StreamViewMode>("desktop");
+  const [callerName, setCallerName] = useState("Mom");
+  const [showObsInstructions, setShowObsInstructions] = useState(false);
 
   // Metering & Wallet
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string; role: string; creditBalance: number } | null>(null);
@@ -721,7 +728,9 @@ export default function CreatorStudioPage() {
         engineRef.current.broadcastToObs(
           streamKey,
           isLive,
-          customImageSrc ? "custom-character" : currentPersona.id
+          customImageSrc ? "custom-character" : currentPersona.id,
+          viewMode,
+          callerName
         );
         setFps(engineRef.current.currentFps || 60);
         setMicVolume(engineRef.current.currentSpeechVolume || 0);
@@ -730,7 +739,7 @@ export default function CreatorStudioPage() {
     };
     frameId = requestAnimationFrame(broadcastLoop);
     return () => cancelAnimationFrame(frameId);
-  }, [isCameraActive, isLive, streamKey, currentPersona.id, customImageSrc, provider]);
+  }, [isCameraActive, isLive, streamKey, currentPersona.id, customImageSrc, provider, viewMode, callerName]);
 
   // Copy OBS URL (Lumify /output endpoint)
   const [mounted, setMounted] = useState(false);
@@ -739,8 +748,8 @@ export default function CreatorStudioPage() {
   }, []);
 
   const obsUrl = mounted && typeof window !== "undefined"
-    ? `${window.location.origin}/output?key=${streamKey}`
-    : `/output?key=${streamKey}`;
+    ? `${window.location.origin}/output?key=${streamKey}&view=${viewMode}&name=${encodeURIComponent(callerName)}`
+    : `/output?key=${streamKey}&view=${viewMode}&name=${encodeURIComponent(callerName)}`;
 
   const copyObsLink = () => {
     navigator.clipboard.writeText(obsUrl);
@@ -750,7 +759,14 @@ export default function CreatorStudioPage() {
 
   const popOutObsWindow = () => {
     if (typeof window !== "undefined") {
-      window.open(obsUrl, "SagePrankCamStream", "width=1280,height=720,menubar=no,toolbar=no,status=no");
+      const isMobile = viewMode.startsWith("android_");
+      const width = isMobile ? 420 : 1280;
+      const height = isMobile ? 860 : 720;
+      window.open(
+        obsUrl,
+        "SageStreamOutput",
+        `width=${width},height=${height},menubar=no,toolbar=no,status=no,location=no`
+      );
     }
   };
 
@@ -1190,52 +1206,209 @@ export default function CreatorStudioPage() {
               )}
             </div>
 
-            {/* OBS Integration Banner */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 border border-blue-200 text-blue-700 font-mono font-bold text-xs">
-                  OBS
+            {/* OBS & Mobile Video Call Stream Output Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+              {/* Header with Status Pill */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-9 w-9 shrink-0 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 font-mono font-bold text-xs flex items-center justify-center">
+                    OBS
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                      OBS & Mobile Call Output
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                        isLive
+                          ? "bg-rose-50 text-rose-700 border-rose-200"
+                          : isCameraActive
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-slate-50 text-slate-600 border-slate-200"
+                      }`}>
+                        {isLive ? "LIVE BROADCASTING" : isCameraActive ? "PREVIEW READY" : "IDLE"}
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Connect to OBS Virtual Camera, Telegram, WhatsApp, Discord, or Zoom.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                    OBS Browser Source URL
-                  </h4>
-                  <p className="text-[11px] text-slate-500 font-mono truncate max-w-md">{obsUrl}</p>
+
+                {/* Quick Help Accordion Toggle */}
+                <button
+                  onClick={() => setShowObsInstructions(!showObsInstructions)}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 cursor-pointer"
+                >
+                  <HelpCircle className="h-3.5 w-3.5" />
+                  <span>How to connect?</span>
+                  {showObsInstructions ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+
+              {/* Instructions Callout (Collapsible) */}
+              {showObsInstructions && (
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-2 animate-in fade-in duration-200">
+                  <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-blue-600" />
+                    How to stream fake Android calls to WhatsApp or Telegram:
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600 pl-1">
+                    <li>Select <strong>WhatsApp Call</strong> or <strong>Telegram Call</strong> view below and set your Caller Name (e.g. Mom).</li>
+                    <li>Click <strong>Copy OBS URL</strong> or <strong>Pop Out Window</strong>.</li>
+                    <li>In <strong>OBS Studio</strong>, click <code>+</code> under Sources &rarr; select <strong>Browser</strong> &rarr; paste the URL (Set Width: <code>720</code>, Height: <code>1280</code>).</li>
+                    <li>In OBS Studio, click <strong>&quot;Start Virtual Camera&quot;</strong>.</li>
+                    <li>Open <strong>WhatsApp Desktop</strong> or <strong>Telegram Desktop</strong> &rarr; start video call &rarr; switch camera device to <strong>&quot;OBS Virtual Camera&quot;</strong>!</li>
+                  </ol>
+                </div>
+              )}
+
+              {/* View Mode Selector Tabs */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between">
+                  <span>Stream View & Device Mode:</span>
+                  <span className="text-[10px] font-normal text-slate-400">
+                    {viewMode.startsWith("android_") ? "Android 9:16 Portrait" : "Widescreen 16:9"}
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    onClick={() => setViewMode("desktop")}
+                    className={`flex items-center justify-center gap-1.5 p-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      viewMode === "desktop"
+                        ? "bg-blue-50 border-blue-300 text-blue-700 shadow-xs ring-1 ring-blue-300"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <Monitor className="h-3.5 w-3.5" />
+                    <span>Desktop (16:9)</span>
+                  </button>
+
+                  <button
+                    onClick={() => setViewMode("android_whatsapp")}
+                    className={`flex items-center justify-center gap-1.5 p-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      viewMode === "android_whatsapp"
+                        ? "bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs ring-1 ring-emerald-300"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <Smartphone className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>WhatsApp Call</span>
+                  </button>
+
+                  <button
+                    onClick={() => setViewMode("android_telegram")}
+                    className={`flex items-center justify-center gap-1.5 p-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      viewMode === "android_telegram"
+                        ? "bg-sky-50 border-sky-300 text-sky-800 shadow-xs ring-1 ring-sky-300"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <Smartphone className="h-3.5 w-3.5 text-sky-600" />
+                    <span>Telegram Call</span>
+                  </button>
+
+                  <button
+                    onClick={() => setViewMode("android_clean")}
+                    className={`flex items-center justify-center gap-1.5 p-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      viewMode === "android_clean"
+                        ? "bg-purple-50 border-purple-300 text-purple-800 shadow-xs ring-1 ring-purple-300"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <Smartphone className="h-3.5 w-3.5 text-purple-600" />
+                    <span>Clean 9:16</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+              {/* Caller Name Input (when in WhatsApp or Telegram Android call mode) */}
+              {viewMode.startsWith("android_") && viewMode !== "android_clean" && (
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                      <User className="h-3.5 w-3.5 text-slate-500" />
+                      Incoming Caller Name:
+                    </label>
+                    <span className="text-[10px] text-slate-400">Renders on Android call HUD</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={callerName}
+                      onChange={(e) => setCallerName(e.target.value)}
+                      placeholder="e.g. Mom, Girlfriend, FBI, Jessica"
+                      className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    {/* Quick Preset Chips */}
+                    <div className="hidden sm:flex items-center gap-1">
+                      {["Mom", "Jessica", "Police", "Drake", "Boss"].map((preset) => (
+                        <button
+                          key={preset}
+                          onClick={() => setCallerName(preset)}
+                          className={`text-[10px] font-medium px-2 py-1 rounded-md border transition-colors cursor-pointer ${
+                            callerName === preset
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* URL Display Bar */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-slate-500">
+                  <span className="font-medium">Direct Stream URL:</span>
+                  <span className="font-mono text-[10px] text-slate-400 truncate max-w-[200px]">
+                    Key: {streamKey}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 border border-slate-200 font-mono text-[11px] text-slate-700 overflow-hidden">
+                  <span className="text-slate-400 select-none">GET</span>
+                  <span className="truncate flex-1 select-all">{obsUrl}</span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                 <button
                   onClick={copyObsLink}
-                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2.5 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                 >
                   {copiedObs ? (
                     <>
-                      <Check className="h-3.5 w-3.5 text-emerald-600" /> Copied!
+                      <Check className="h-4 w-4 text-white" />
+                      <span>URL Copied!</span>
                     </>
                   ) : (
                     <>
-                      <Copy className="h-3.5 w-3.5" /> Copy Link
+                      <Copy className="h-4 w-4" />
+                      <span>Copy OBS URL</span>
                     </>
                   )}
                 </button>
 
                 <button
                   onClick={popOutObsWindow}
-                  className="p-2 rounded-xl bg-slate-100 border border-slate-200 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
-                  title="Pop out 1080p stream window for Discord/Zoom/OBS capture"
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 px-3.5 py-2.5 text-xs font-semibold transition-colors cursor-pointer"
+                  title="Pop out standalone stream window for OBS Window Capture or screen sharing"
                 >
-                  <Maximize2 className="h-4 w-4" />
+                  <Maximize2 className="h-4 w-4 text-slate-600" />
+                  <span>Pop Out Window</span>
                 </button>
 
                 <a
                   href={obsUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="p-2 rounded-xl bg-slate-100 border border-slate-200 hover:bg-slate-200 text-slate-700 transition-colors"
-                  title="Open OBS preview in new tab"
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 px-3.5 py-2.5 text-xs font-semibold transition-colors"
+                  title="Open stream output preview in a new browser tab"
                 >
-                  <ExternalLink className="h-4 w-4" />
+                  <ExternalLink className="h-4 w-4 text-slate-600" />
+                  <span>Open Preview Tab</span>
                 </a>
               </div>
             </div>

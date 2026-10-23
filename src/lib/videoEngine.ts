@@ -9,15 +9,20 @@
 
 export type FilterType = "cyberpunk" | "anime" | "toon3d" | "noir" | "synthwave" | "studio" | "custom-image";
 
+export type StreamViewMode = "desktop" | "android_whatsapp" | "android_telegram" | "android_clean";
+
 export interface StreamBroadcastPayload {
   type: "FRAME_DATA" | "STATUS_UPDATE" | "STREAM_END";
   streamKey: string;
   isLive: boolean;
+  isCameraActive?: boolean;
   personaId: string;
   fps: number;
   timestamp: number;
   frameDataUrl?: string;
   customImageUrl?: string | null;
+  viewMode?: StreamViewMode;
+  callerName?: string;
 }
 
 interface AvatarLandmarks {
@@ -300,8 +305,17 @@ export class VideoTransformationEngine {
     };
   }
 
-  public broadcastToObs(streamKey: string, isLive: boolean, personaId: string) {
-    if (!this.broadcastChannel || !this.canvasElement) return;
+  private lastServerPostTime = 0;
+  private isPostingFrame = false;
+
+  public broadcastToObs(
+    streamKey: string,
+    isLive: boolean,
+    personaId: string,
+    viewMode: StreamViewMode = "desktop",
+    callerName: string = "Mom"
+  ) {
+    if (!this.canvasElement) return;
 
     // Throttle JPEG encoding to 20 FPS to keep the main thread light and responsive
     if (this.frameCount % 3 === 0) {
@@ -311,13 +325,36 @@ export class VideoTransformationEngine {
           type: "FRAME_DATA",
           streamKey,
           isLive,
+          isCameraActive: this.isProcessing,
           personaId,
           fps: this.currentFps,
           timestamp: Date.now(),
           frameDataUrl,
           customImageUrl: this.customImageDataUrl,
+          viewMode,
+          callerName,
         };
-        this.broadcastChannel.postMessage(payload);
+
+        // 1. Send via BroadcastChannel for browser popouts (0ms IPC latency)
+        if (this.broadcastChannel) {
+          this.broadcastChannel.postMessage(payload);
+        }
+
+        // 2. Send via HTTP POST to /api/session/frame for external OBS Studio CEF
+        const now = performance.now();
+        if (!this.isPostingFrame && now - this.lastServerPostTime > 120) {
+          this.lastServerPostTime = now;
+          this.isPostingFrame = true;
+          fetch("/api/session/frame", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+            .catch(() => {})
+            .finally(() => {
+              this.isPostingFrame = false;
+            });
+        }
       } catch (err) {
         console.error("Broadcast frame error:", err);
       }
@@ -325,17 +362,27 @@ export class VideoTransformationEngine {
   }
 
   public broadcastStreamEnd(streamKey: string) {
-    if (!this.broadcastChannel) return;
-    try {
-      this.broadcastChannel.postMessage({
-        type: "STREAM_END",
-        streamKey,
-        isLive: false,
-        personaId: "",
-        fps: 0,
-        timestamp: Date.now(),
-      });
-    } catch {}
+    const payload: StreamBroadcastPayload = {
+      type: "STREAM_END",
+      streamKey,
+      isLive: false,
+      isCameraActive: false,
+      personaId: "",
+      fps: 0,
+      timestamp: Date.now(),
+    };
+
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage(payload);
+      } catch {}
+    }
+
+    fetch("/api/session/frame", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
   }
 
   private startLoop() {
